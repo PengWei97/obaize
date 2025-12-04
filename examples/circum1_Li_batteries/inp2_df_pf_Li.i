@@ -1,13 +1,16 @@
 my_filename = s2_df_pf_Li
 my_interval = 2
 
+# Dimensionless initial Li site occupancy in the metal region
+my_theta_m0 = 0.999999998
+
 [Mesh]
   type      = GeneratedMesh
   dim       = 2
   nx        = 100
   ny        = 100
-  xmax      = 100.0e-6   # 100 μm
-  ymax      = 100.0e-6   # 100 μm
+  xmax      = 100.0e-6   # [m] domain width = 100 μm
+  ymax      = 100.0e-6   # [m] domain height = 100 μm
   elem_type = QUAD4
 []
 
@@ -60,12 +63,12 @@ my_interval = 2
   [./xi_ic]
     type      = SmoothCircleIC
     variable  = xi
-    x1        = 50.0e-6
-    y1        = 50.0e-6
-    radius    = 15.0e-6
-    int_width = 1.0e-6
-    invalue   = 0.0      # void
-    outvalue  = 1.0      # solid
+    x1        = 50.0e-6   # [m] void center x
+    y1        = 50.0e-6   # [m] void center y
+    radius    = 15.0e-6   # [m] void radius = 15 μm
+    int_width = 1.0e-6    # [m] interface width for xi
+    invalue   = 0.0       # void
+    outvalue  = 1.0       # solid
   [../]
 
   [./theta_m_ic]
@@ -74,28 +77,11 @@ my_interval = 2
     x1        = 50.0e-6
     y1        = 50.0e-6
     radius    = 15.0e-6
-    int_width = 1.0e-6   # sharper interface for concentration
-    invalue   = 0.999999998      # void: low Li
-    outvalue  = 0.999999998      # solid: high Li
+    int_width = 1.0e-6    # [m] interface width for theta_m
+    invalue   = ${my_theta_m0}
+    outvalue  = ${my_theta_m0}
   [../]
 []
-
-# ----------------------------------------------------
-# Boundary Conditions
-#
-# For MatDiffusion and Allen–Cahn, the natural BC is zero flux:
-#   -j · n = 0 for theta_m and xi on all boundaries.
-# So we can omit explicit BC blocks here.
-#
-# If desired, explicit zero-flux BC could be added as:
-# [BCs]
-#   [./theta_no_flux]
-#     type     = NeumannBC
-#     variable = theta_m
-#     boundary = 'left right top bottom'
-#     value    = 0.0
-#   [../]
-# []
 
 # ----------------------------------------------------
 # Kernels
@@ -143,35 +129,35 @@ my_interval = 2
   [../]
 
   # Chemical contribution:
-  #   -(L * R * T / Omega_L) * h'(xi) * ln[(1 - theta_m)/(1 - theta_m0)]
+  #   -(L * R * T / Ω_L) * h'(xi) * ln[(1 - theta_m)/(1 - theta_m0)]
   [./Li_AC_bulk1]
     type     = LiVoidAllenCahn
     variable = xi
-    mob_name = L
+    mob_name = L                # [m^2/(N*s)]
 
     theta_m  = theta_m
-    h_name   = h_xi
+    h_name   = h_xi             # dimensionless
 
-    R        = 8.314       # J/(mol*K)
-    T        = 298.0       # K
-    Omega_L  = 13.1e-6     # m^3/mol
-    theta_m0 = 0.999999998 # reference occupancy
+    R        = 8.314            # [J/(mol*K)]
+    T        = 298.0            # [K]
+    Omega_L  = 13.1e-6          # [m^3/mol]
+    theta_m0 = ${my_theta_m0}   # dimensionless reference occupancy
   [../]
 
   # Double-well contribution: -L * g'(xi)
   [./Li_AC_bulk2]
     type     = AllenCahn
     variable = xi
-    f_name   = g_xi
-    mob_name = L
+    f_name   = g_xi              # energy density [J/m^3 = Pa]
+    mob_name = L                 # [m^2/(N*s)]
   [../]
 
   # Gradient contribution: L * kappa * Laplacian(xi)
   [./Li_AC_grad]
     type       = ACInterface
     variable   = xi
-    kappa_name = kappa
-    mob_name   = L
+    kappa_name = kappa           # [N]
+    mob_name   = L               # [m^2/(N*s)]
   [../]
 []
 
@@ -179,26 +165,30 @@ my_interval = 2
 # Materials
 # ----------------------------------------------------
 [Materials]
-  # Constant parameters: effective diffusivity, mobility, interface width, double-well height
+  # Constant phase-field parameters:
+  #   D_eff  [m^2/s]    effective diffusion coefficient
+  #   L      [m^2/(N*s)] interface mobility (Anand-type AC mobility)
+  #   kappa  [N]        gradient energy coefficient
+  #   w      [N/m^2=Pa] double-well potential height
   [./Material_prop_const]
     type        = GenericConstantMaterial
     prop_names  = 'D_eff     L      kappa    w'
     prop_values = '7.5e-13  1e-9   4.5e-7  3.5e6'
   [../]
 
-  # Interpolation function h(xi) (phase-field switching)
-  # h(xi) = xi^2 (xi^2 - 3 xi + 3)
+  # Interpolation function h(xi) = xi^2 (xi^2 - 3 xi + 3)
+  # dimensionless, used for stiffness and diffusion interpolation
   [./interpore_func]
     type              = DerivativeParsedMaterial
     block             = 0
     coupled_variables = 'xi'
     expression        = 'xi*xi*(xi*xi-3*xi+3)'
     property_name     = h_xi
-    derivative_order  = 2   # h_xi, dh/dxi, d2h/dxi2
+    derivative_order  = 2
   [../]
 
   # Double-well potential:
-  #   g(xi) = w * xi^2 * (1 - xi)^2
+  # g(xi) = w * xi^2 * (1 - xi)^2   [J/m^3 = Pa]
   [./double_well_func]
     type                      = DerivativeParsedMaterial
     block                     = 0
@@ -206,11 +196,11 @@ my_interval = 2
     material_property_names   = 'w'
     expression                = 'w*xi^2*(1-xi)^2'
     property_name             = g_xi
-    derivative_order          = 2   # g_xi, dg/dxi, d2g/dxi2
+    derivative_order          = 2
   [../]
 
   # Concentration-dependent effective diffusivity:
-  #   D(theta_m, xi) = D_eff * h(xi) / max(1 - theta_m, 1e-3)
+  #   D(theta_m, xi) = D_eff * h(xi) / max(1 - theta_m, 1e-3)   [m^2/s]
   [./conc_diffusivity]
     type                    = ParsedMaterial
     block                   = 0
@@ -221,8 +211,7 @@ my_interval = 2
     outputs                 = my_exodus
   [../]
 
-  # theta_m * h'(xi), where h'(xi) = xi * (4 xi^2 - 9 xi + 6)
-  # A small offset is added to avoid exactly zero in some regions.
+  # theta_m * h'(xi), where h'(xi) = xi * (4 xi^2 - 9 xi + 6), dimensionless
   [./theta_m_times_hprime]
     type              = ParsedMaterial
     property_name     = theta_m_times_hprime
