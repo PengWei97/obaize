@@ -3,19 +3,23 @@
 # Governing equation:
 #   dθ/dt = ∇ · [ D_eff / (1 - θ) ∇θ ]
 # Domain: 0 <= x <= 10 μm  (use SI units: 1e-5 m)
+#
+# Note:
+#   Adaptive mesh refinement (AMR) is intentionally disabled here.
+#   AMR will be a future optimization target, but the current AMR
+#   strategy is not yet mature and may introduce unnecessary
+#   complexity at this stage.
 # ------------------------------------------------------------
 
-my_filename = s2_diffusion_Li
-my_interval = 10
+my_filename = s1_diffusion_Li
+my_interval = 2
 
 [Mesh]
-  type = GeneratedMesh
-  dim = 2
-  nx = 50
-  ny = 5
-  xmax = 10.0e-6
-  ymax = 1.0e-6
-  elem_type = QUAD4
+  type      = GeneratedMesh
+  dim       = 1            # true 1D diffusion
+  nx        = 100          # number of elements along x
+  xmax      = 1.0e-5       # 10 μm in SI units
+  elem_type = EDGE2
 []
 
 [Variables]
@@ -25,138 +29,148 @@ my_interval = 10
   [../]
 []
 
-# ------------------------
+# ------------------------------------------------------------
 # Initial Conditions
-#   Step profile:
+# Step profile:
 #   θ = 0.9 for x < L/2, θ = 0.1 for x >= L/2
-# ------------------------
+# ------------------------------------------------------------
 [ICs]
   [./theta_m_ic]
-    type = BoundingBoxIC
+    type     = BoundingBoxIC
     variable = theta_m
-    x1 = 0.0
-    y1 = 0.0
-    x2 = 5.0e-6
-    y2 = 1.0e-6
 
-    # int_width = 2.0e
-    inside = 0.9
+    x1 = 0.0
+    x2 = 5.0e-6        # half of the domain length
+
+    inside  = 0.9
     outside = 0.1
   [../]
 []
 
-# ------------------------
+# ------------------------------------------------------------
 # Boundary Conditions
-#   No-flux (natural Neumann) on both ends ⇒ nothing to specify
-#   Optionally, you can enforce zero gradient explicitly:
-# ------------------------
-[BCs]
-  [./concBCs]
-    type = NeumannBC
-    variable = theta_m
-    boundary = 'left right top bottom'
-    value = 0.0
-  [../]
-[]
+# Natural Neumann (no-flux) BC is implied by default for diffusion,
+# so no explicit BC block is required.
+# Uncomment the following block if you want to enforce zero gradient.
+# ------------------------------------------------------------
+# [BCs]
+#   [./concBCs]
+#     type     = NeumannBC
+#     variable = theta_m
+#     boundary = 'left right'
+#     value    = 0.0
+#   [../]
+# []
 
-# ------------------------
+# ------------------------------------------------------------
 # Kernels
 #   TimeDerivative: (w, dθ/dt)
-#   Diffusion with nonlinear D = D_eff/(1 - θ)
-# ------------------------
+#   MatDiffusion:   (∇w, D(θ) ∇θ) with D = D_eff / (1 - θ)
+# ------------------------------------------------------------
 [Kernels]
   [./time]
-    type = TimeDerivative
+    type     = TimeDerivative
     variable = theta_m
   [../]
+
   [./LiDiffusionPDE]
-    type = MatDiffusion
-    variable = theta_m
-    diffusivity = conc_diffusivity # D = D_eff/(1 - θ)
+    type        = MatDiffusion
+    variable    = theta_m
+    diffusivity = conc_diffusivity    # material property name
   [../]
 []
 
-# ------------------------
+# ------------------------------------------------------------
 # Materials
-#   Constant effective diffusion coefficient D_eff
-# ------------------------
+#   D_eff: constant effective diffusion coefficient
+#   conc_diffusivity: D(θ) = D_eff / (1 - θ)
+# ------------------------------------------------------------
 [Materials]
-  [./Material_prop_const]
-    type = GenericConstantMaterial
+  [./material_prop_const]
+    type        = GenericConstantMaterial
     prop_names  = 'D_eff'
-    prop_values = '7.5e-13'   # m^2/s (example value) '7.5e-13
+    prop_values = '7.5e-13'   # m^2·s^-1 (example value)
   [../]
+
   [./conc_diffusivity]
-    type = ParsedMaterial
-    block = 0
-    coupled_variables = 'theta_m'
-    material_property_names = 'D_eff'
-
-    expression = 'D_eff/(1-theta_m)'
-    property_name = conc_diffusivity
-    outputs = my_exodus
+    type                       = ParsedMaterial
+    coupled_variables          = 'theta_m'
+    material_property_names    = 'D_eff'
+    property_name              = conc_diffusivity
+    expression                 = 'D_eff/(1 - theta_m + 1e-6)'
+    outputs                    = my_exodus
   [../]
 []
 
+# ------------------------------------------------------------
+# Preconditioning / Linear solver
+#   Use SMP (LU factorization) with a single preconditioned solve.
+# ------------------------------------------------------------
 [Preconditioning]
-  [./SMP]
-   type = SMP
-   full = true
+  [./pc]
+    type = SMP
+    full = true
+
+    petsc_options_iname  = '-pc_type -ksp_type'
+    petsc_options_value  = 'lu       preonly'
   [../]
 []
 
+# ------------------------------------------------------------
+# Executioner
+#   Transient diffusion solved by implicit Euler.
+#   Fixed mesh is used here; AMR may be added in future work.
+# ------------------------------------------------------------
 [Executioner]
-  type = Transient
-  scheme = 'bdf2'
-  solve_type = 'PJFNK'
+  type       = Transient
+  scheme     = 'implicit-euler'
+  solve_type = 'NEWTON'
 
-  l_max_its = 30
-  l_tol = 1.0e-4
+  l_max_its  = 60
+  l_tol      = 1.0e-4
   nl_max_its = 25
   nl_rel_tol = 1.0e-9
 
-  end_time = 200.0
-  dtmax = 1.0
-  dt = 1e-2
-  [./TimeStepper]
-    type = IterationAdaptiveDT
-    dt = 1.0e-3       
-    growth_factor = 1.2
-    cutback_factor = 0.8
-    optimal_iterations = 8
-  [../]
-  # [./Adaptivity]
-  #   initial_adaptivity = 0
-  #   refine_fraction    = 0.4
-  #   coarsen_fraction   = 0.05
-  #   max_h_level        = 1
-  # [../]
+  num_steps  = 5
+  dt         = 1.0e-2
+  dtmax      = 1.0
 []
 
+# ------------------------------------------------------------
+# Outputs
+#   - Checkpoint files
+#   - Exodus/Nemesis output
+#   - CSV output
+#   - PerfGraph for performance analysis
+# ------------------------------------------------------------
 [Outputs]
   [./my_checkpoint]
-    file_base = ./${my_filename}/out_${my_filename}
-    time_step_interval = ${my_interval}
-    type = Checkpoint
+    file_base             = ./${my_filename}/out_${my_filename}
+    time_step_interval    = ${my_interval}
+    type                  = Checkpoint
     additional_execute_on = 'INITIAL FINAL'
-  [../]  
-  [my_exodus]
-    file_base = ./ex_${my_filename}/out_${my_filename} 
-    type = Nemesis
-    time_step_interval = ${my_interval}
+  [../]
+
+  [./my_exodus]
+    file_base             = ./ex_${my_filename}/out_${my_filename}
+    type                  = Nemesis
+    time_step_interval    = ${my_interval}
     additional_execute_on = 'FINAL'
   [../]
+
   [./csv]
     file_base = ./csv_${my_filename}/out_${my_filename}
-    type = CSV
+    type      = CSV
   [../]
-  [pgraph]
-    type = PerfGraphOutput
+
+  [./pgraph]
+    type               = PerfGraphOutput
     time_step_interval = ${my_interval}
-    level = 2                     # Default is 1
-    heaviest_branch = true        # Default is false
-    heaviest_sections = 5         # Default is 0
-    execute_on = 'TIMESTEP_END FINAL'
-  []
+    level              = 2
+    heaviest_branch    = true
+    heaviest_sections  = 5
+    execute_on         = 'TIMESTEP_END FINAL'
+  [../]
+
   print_linear_residuals = false
 []
