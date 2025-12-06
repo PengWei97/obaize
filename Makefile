@@ -34,7 +34,7 @@ FLUID_PROPERTIES            := no
 FSI                         := no
 FUNCTIONAL_EXPANSION_TOOLS  := no
 GEOCHEMISTRY                := no
-HEAT_TRANSFER               := no
+HEAT_TRANSFER               := yes
 LEVEL_SET                   := no
 MISC                        := no
 NAVIER_STOKES               := no
@@ -46,9 +46,9 @@ RAY_TRACING                 := no
 REACTOR                     := no
 RDG                         := no
 RICHARDS                    := no
-SOLID_MECHANICS             := no
+SOLID_MECHANICS             := yes
 STOCHASTIC_TOOLS            := no
-THERMAL_HYDRAULICS          := yes
+THERMAL_HYDRAULICS          := no
 XFEM                        := no
 
 include $(MOOSE_DIR)/modules/modules.mk

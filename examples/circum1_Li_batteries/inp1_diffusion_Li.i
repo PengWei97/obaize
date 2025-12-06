@@ -48,21 +48,6 @@ my_interval = 2
 []
 
 # ------------------------------------------------------------
-# Boundary Conditions
-# Natural Neumann (no-flux) BC is implied by default for diffusion,
-# so no explicit BC block is required.
-# Uncomment the following block if you want to enforce zero gradient.
-# ------------------------------------------------------------
-# [BCs]
-#   [./concBCs]
-#     type     = NeumannBC
-#     variable = theta_m
-#     boundary = 'left right'
-#     value    = 0.0
-#   [../]
-# []
-
-# ------------------------------------------------------------
 # Kernels
 #   TimeDerivative: (w, dθ/dt)
 #   MatDiffusion:   (∇w, D(θ) ∇θ) with D = D_eff / (1 - θ)
