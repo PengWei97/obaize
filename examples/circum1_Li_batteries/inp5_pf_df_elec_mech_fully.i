@@ -364,8 +364,8 @@ my_i_app = 1.0   # [A/m^2]
     eigenstrain_names = 'chem_strain'
 
     add_variables     = true
-    generate_output   = 'strain_xx strain_yy strain_xy \
-                         stress_xx stress_yy stress_xy \
+    generate_output   = 'strain_xx strain_yy strain_xy
+                         stress_xx stress_yy stress_xy
                          vonmises_stress'
   [../]
 []
